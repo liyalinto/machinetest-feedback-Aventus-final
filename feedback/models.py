@@ -52,3 +52,4 @@ class FeedbackAnswer(models.Model):
 
     def __str__(self):
         return f"Answer q:{self.question.id} rating:{self.rating}"
+

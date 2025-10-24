@@ -2,6 +2,7 @@ from django.shortcuts import render
 
 # Create your views here.
 # feedback/views.py
+from rest_framework.exceptions import PermissionDenied
 from rest_framework import generics, permissions, status
 from rest_framework.response import Response
 from django.contrib.auth.models import User
@@ -15,6 +16,7 @@ from django.db.models import Q
 from datetime import datetime
 from .models import Employee
 from .serializers import EmployeeSerializer
+
 # Public: register
 class RegisterView(generics.CreateAPIView):
     permission_classes = [permissions.AllowAny]
@@ -131,4 +133,25 @@ class AdminFeedbackFilterAPIView(generics.ListAPIView):
 class EmployeeListAPIView(generics.ListAPIView):
     queryset = Employee.objects.all().select_related('username', 'designation')
     serializer_class = EmployeeSerializer
-    permission_classes = [permissions.IsAuthenticated]  
+    permission_classes = [permissions.IsAuthenticated]
+from rest_framework import generics, permissions
+from .models import Designation
+from .serializers import DesignationSerializer
+
+# List and create designations
+class DesignationListCreateAPIView(generics.ListCreateAPIView):
+    """
+    API to list all designations or create a new one.
+    Only authenticated users can view.
+    Only admins can create.
+    """
+    queryset = Designation.objects.all().order_by('id')
+    serializer_class = DesignationSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def perform_create(self, serializer):
+        # Allow only admin to create new designations
+        if not self.request.user.is_staff:
+            raise PermissionDenied("Only admin users can add designations.")
+        serializer.save()
+  

@@ -4,20 +4,51 @@ from django.contrib.auth.models import User
 from .models import Designation, Employee, FeedbackQuestion, FeedbackSubmission, FeedbackAnswer
 
 
+# class UserRegisterSerializer(serializers.ModelSerializer):
+#     password = serializers.CharField(write_only=True, min_length=6)
+#     class Meta:
+#         model = User
+#         fields = ('id','username','email','password','first_name','last_name')
+
+#     def create(self, validated_data):
+#         password = validated_data.pop('password')
+#         user = User(**validated_data)
+#         user.set_password(password)
+#         user.save()
+#         # Optionally create an Employee record automatically (if required)
+#         Employee.objects.create(user=user)
+#         return user
+
+
+
 class UserRegisterSerializer(serializers.ModelSerializer):
     password = serializers.CharField(write_only=True, min_length=6)
+    designation_id = serializers.PrimaryKeyRelatedField(
+        queryset=Designation.objects.all(),
+        source='employee_profile.designation',
+        write_only=True,
+        required=False,
+        allow_null=True
+    )
+
     class Meta:
         model = User
-        fields = ('id','username','email','password','first_name','last_name')
+        fields = ('id', 'username', 'email', 'password', 'first_name', 'last_name', 'designation_id')
 
     def create(self, validated_data):
         password = validated_data.pop('password')
+        employee_data = validated_data.pop('employee_profile', {})  # extract nested employee data if any
+
         user = User(**validated_data)
         user.set_password(password)
         user.save()
-        # Optionally create an Employee record automatically (if required)
-        Employee.objects.create(user=user)
+
+        # Create related Employee record
+        designation = employee_data.get('designation') if employee_data else None
+        Employee.objects.create(user=user, designation=designation)
         return user
+
+
 
 class DesignationSerializer(serializers.ModelSerializer):
     class Meta:
@@ -80,3 +111,8 @@ class FeedbackSubmissionSerializer(serializers.ModelSerializer):
                 comment=ans.get('comment','')
             )
         return submission
+class DesignationSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Designation
+        fields = ['id', 'name']
+        ref_name = "DesignationSerializerMain"

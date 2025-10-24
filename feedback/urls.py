@@ -23,6 +23,7 @@ from .views import (
     EmployeeFeedbackListAPIView, AdminFeedbackFilterAPIView, EmployeeListAPIView
 )
 from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
+from .views import DesignationListCreateAPIView
 
 urlpatterns = [
     path('auth/register/', RegisterView.as_view(), name='register'),
@@ -34,6 +35,7 @@ urlpatterns = [
     path('feedback/my/', EmployeeFeedbackListAPIView.as_view(), name='my-feedback'),
     path('feedback/admin/', AdminFeedbackFilterAPIView.as_view(), name='admin-feedback'),
     path('employees/', EmployeeListAPIView.as_view(), name='employee-list'),
+    path('designations/', DesignationListCreateAPIView.as_view(), name='designation-list-create'),
 
   
 ]
