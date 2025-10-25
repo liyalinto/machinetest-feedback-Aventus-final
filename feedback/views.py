@@ -1,34 +1,60 @@
-from django.shortcuts import render
 
-# Create your views here.
-# feedback/views.py
+from django.shortcuts import render
 from rest_framework.exceptions import PermissionDenied
 from rest_framework import generics, permissions, status
 from rest_framework.response import Response
-from django.contrib.auth.models import User
+from django.contrib.auth.models import User, update_last_login
+from django.utils import timezone
+from rest_framework_simplejwt.views import TokenObtainPairView
+from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
+from django.db.models import Q
+from datetime import datetime
+from django.db import IntegrityError
 from .models import Designation, Employee, FeedbackQuestion, FeedbackSubmission
 from .serializers import (
     UserRegisterSerializer, DesignationSerializer, EmployeeSerializer,
     FeedbackQuestionSerializer, FeedbackSubmissionSerializer
 )
-from rest_framework_simplejwt.views import TokenObtainPairView
-from django.db.models import Q
-from datetime import datetime
-from .models import Employee
-from .serializers import EmployeeSerializer
 
-# Public: register
+
+class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
+    def validate(self, attrs):
+        data = super().validate(attrs)
+        # Update last_login every time user logs in
+        update_last_login(None, self.user)
+        return data
+
+
+class CustomTokenObtainPairView(TokenObtainPairView):
+    serializer_class = CustomTokenObtainPairSerializer
+
+
+
 class RegisterView(generics.CreateAPIView):
     permission_classes = [permissions.AllowAny]
     serializer_class = UserRegisterSerializer
 
-# JWT login: use simplejwt's TokenObtainPairView (no extra code needed)
-# in urls.py we'll import TokenObtainPairView and TokenRefreshView
+    def perform_create(self, serializer):
+        user = serializer.save()
 
-# List feedback questions (filter by type)
+        designation = getattr(user, '_designation', None)
+        department = getattr(user, '_department', '')
+
+        if not Employee.objects.filter(user=user).exists():
+            try:
+                Employee.objects.create(
+                    user=user,
+                    designation=designation,
+                    department=department
+                )
+            except IntegrityError:
+                pass
+
+# Feedback Questions
 class FeedbackQuestionListAPIView(generics.ListAPIView):
     serializer_class = FeedbackQuestionSerializer
-    permission_classes = [permissions.IsAuthenticated]  # spec says only authenticated can access protected endpoints
+    permission_classes = [permissions.IsAuthenticated]
+
     def get_queryset(self):
         qs = FeedbackQuestion.objects.filter(is_active=True)
         ftype = self.request.query_params.get('type') or self.request.query_params.get('feedback_type')
@@ -36,7 +62,8 @@ class FeedbackQuestionListAPIView(generics.ListAPIView):
             qs = qs.filter(feedback_type=ftype)
         return qs
 
-# Submit feedback (create submission + nested answers)
+
+# Submit Feedback
 class SubmitFeedbackAPIView(generics.CreateAPIView):
     serializer_class = FeedbackSubmissionSerializer
     permission_classes = [permissions.IsAuthenticated]
@@ -46,35 +73,39 @@ class SubmitFeedbackAPIView(generics.CreateAPIView):
         ctx['request'] = self.request
         return ctx
 
-# View feedback for a specific employee (by employee id)
+
+# View Feedbacks
 class EmployeeFeedbackListAPIView(generics.ListAPIView):
     serializer_class = FeedbackSubmissionSerializer
     permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
-        # if user passes ?employee_id= or use current user
         employee_id = self.request.query_params.get('employee_id')
         if employee_id:
             return FeedbackSubmission.objects.filter(submitted_by__id=employee_id).order_by('-created_at')
-        # default: feedbacks submitted by current user's employee profile
-        if hasattr(self.request.user, 'employee_profile'):
-            return FeedbackSubmission.objects.filter(submitted_by=self.request.user.employee_profile).order_by('-created_at')
-        return FeedbackSubmission.objects.none()
 
-# Admin view with filters: designation, department, date range
+        if hasattr(self.request.user, 'employee_profile'):
+            return FeedbackSubmission.objects.filter(
+                submitted_by=self.request.user.employee_profile
+            ).order_by('-created_at')
+
+        return FeedbackSubmission.objects.none()
+# Admin Feedback Filter
 class AdminFeedbackFilterAPIView(generics.ListAPIView):
     serializer_class = FeedbackSubmissionSerializer
-    permission_classes = [permissions.IsAdminUser]  # only admin by default
+    permission_classes = [permissions.IsAdminUser]
 
     def get_queryset(self):
-        qs = FeedbackSubmission.objects.all().select_related('submitted_by__designation','target_employee__designation').prefetch_related('answers','answers__question')
-        designation = self.request.query_params.get('designation')  # designation id or name supported
+        qs = FeedbackSubmission.objects.all().select_related(
+            'submitted_by__designation', 'target_employee__designation'
+        ).prefetch_related('answers', 'answers__question')
+
+        designation = self.request.query_params.get('designation')
         department = self.request.query_params.get('department')
-        start_date = self.request.query_params.get('start_date')  # expected YYYY-MM-DD
+        start_date = self.request.query_params.get('start_date')
         end_date = self.request.query_params.get('end_date')
 
         if designation:
-            # attempt numeric id else name
             if designation.isdigit():
                 qs = qs.filter(submitted_by__designation__id=int(designation))
             else:
@@ -89,6 +120,7 @@ class AdminFeedbackFilterAPIView(generics.ListAPIView):
                 qs = qs.filter(created_at__gte=sd)
             except ValueError:
                 pass
+
         if end_date:
             try:
                 ed = datetime.fromisoformat(end_date)
@@ -97,48 +129,15 @@ class AdminFeedbackFilterAPIView(generics.ListAPIView):
                 pass
 
         return qs.order_by('-created_at')
-# feedback/views.py
 
-
-# class EmployeeListAPIView(generics.ListAPIView):
-#     """
-#     API to view all employees with optional filters.
-#     Accessible to authenticated users (you can restrict to admin if needed).
-#     """
-#     serializer_class = EmployeeSerializer
-#     permission_classes = [permissions.IsAuthenticated]
-
-#     def get_queryset(self):
-#         queryset = Employee.objects.select_related('user', 'designation').all()
-
-#         # Optional filters
-#         designation = self.request.query_params.get('designation')
-#         department = self.request.query_params.get('department')
-#         user_id = self.request.query_params.get('user_id')
-
-#         if designation:
-#             # Filter by designation name or id
-#             if designation.isdigit():
-#                 queryset = queryset.filter(designation__id=int(designation))
-#             else:
-#                 queryset = queryset.filter(designation__name__icontains=designation)
-
-#         if department:
-#             queryset = queryset.filter(department__icontains=department)
-
-#         if user_id:
-#             queryset = queryset.filter(user__id=user_id)
-
-#         return queryset.order_by('user__first_name')
+# Employee List API
 class EmployeeListAPIView(generics.ListAPIView):
-    queryset = Employee.objects.all().select_related('username', 'designation')
+    queryset = Employee.objects.all().select_related('user', 'designation')
     serializer_class = EmployeeSerializer
     permission_classes = [permissions.IsAuthenticated]
-from rest_framework import generics, permissions
-from .models import Designation
-from .serializers import DesignationSerializer
 
-# List and create designations
+
+# Designation API 
 class DesignationListCreateAPIView(generics.ListCreateAPIView):
     """
     API to list all designations or create a new one.
@@ -150,8 +149,6 @@ class DesignationListCreateAPIView(generics.ListCreateAPIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def perform_create(self, serializer):
-        # Allow only admin to create new designations
         if not self.request.user.is_staff:
             raise PermissionDenied("Only admin users can add designations.")
-        serializer.save()
-  
+        serializer.save() 
