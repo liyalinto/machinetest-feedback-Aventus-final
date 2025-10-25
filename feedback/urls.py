@@ -17,9 +17,7 @@ urlpatterns = [
     path('questions/', FeedbackQuestionListAPIView.as_view(), name='feedback-questions'),
     path('feedback/submit/', SubmitFeedbackAPIView.as_view(), name='submit-feedback'),
     path('feedback/my/', EmployeeFeedbackListAPIView.as_view(), name='my-feedback'),
-    path('feedback/admin/', AdminFeedbackFilterAPIView.as_view(), name='admin-feedback'),
     path('employees/', EmployeeListAPIView.as_view(), name='employee-list'),
     path('designations/', DesignationListCreateAPIView.as_view(), name='designation-list-create'),
-
-  
+    path('admin/feedback-filter/', AdminFeedbackFilterAPIView.as_view(), name='admin-feedback-filter'),  
 ]

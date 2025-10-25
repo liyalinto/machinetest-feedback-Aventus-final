@@ -8,6 +8,7 @@ from django.contrib.auth.models import User
 from django.db import IntegrityError
 from .models import Employee, Designation
 
+from django.db import IntegrityError, transaction
 
 class UserRegisterSerializer(serializers.ModelSerializer):
     password = serializers.CharField(write_only=True, min_length=6)
@@ -56,6 +57,11 @@ class UserRegisterSerializer(serializers.ModelSerializer):
         employee.save()
 
         return user
+
+
+    
+
+    
 
 
 class DesignationSerializer(serializers.ModelSerializer):
@@ -163,5 +169,10 @@ class FeedbackSubmissionSerializer(serializers.ModelSerializer):
 
 
 
+class FeedbackFilterSerializer(serializers.Serializer):
+    designation = serializers.CharField(required=False)
+    department = serializers.CharField(required=False)
+    start_date = serializers.DateField(required=False)
+    end_date = serializers.DateField(required=False)
 
 
